@@ -1,0 +1,1100 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>🌙 AR Sleep Guardian — Penjaga Tidur Berkualiti</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Font Awesome 6 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <!-- Canvas Confetti -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@500;600;700;800&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet" />
+  <!-- MediaPipe Hands & Camera Utils -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: radial-gradient(circle at 50% 20%, #2d145e 0%, #14082b 65%, #090314 100%);
+      font-family: 'Nunito', sans-serif;
+      color: #f8fafc;
+    }
+
+    .font-display {
+      font-family: 'Fredoka', 'Outfit', sans-serif;
+    }
+
+    /* Mirrored AR Camera Feed ONLY */
+    #ar-video {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      object-fit: cover;
+      transform: scaleX(-1);
+      z-index: 1;
+      display: none;
+    }
+
+    /* Night Sky / Dream Backdrop */
+    #dream-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      background:
+        radial-gradient(circle at 18% 22%, rgba(250, 204, 21, 0.14), transparent 32%),
+        radial-gradient(circle at 82% 28%, rgba(167, 139, 250, 0.18), transparent 36%),
+        linear-gradient(180deg, #160a30 0%, #24104e 52%, #110726 100%);
+    }
+
+    .twinkle-star {
+      position: absolute;
+      border-radius: 9999px;
+      background: #fef08a;
+      box-shadow: 0 0 8px #fde047;
+      animation: twinkle var(--dur, 3s) ease-in-out infinite;
+    }
+
+    @keyframes twinkle {
+      0%, 100% { opacity: 0.25; transform: scale(0.8); }
+      50% { opacity: 1; transform: scale(1.25); }
+    }
+
+    /* Soft Cloud / Pillow Target Card Styling */
+    .dream-card {
+      background: linear-gradient(155deg, rgba(49, 24, 98, 0.88), rgba(24, 11, 54, 0.92));
+      border: 2px solid rgba(196, 181, 253, 0.35);
+      box-shadow:
+        0 8px 24px rgba(5, 2, 15, 0.55),
+        inset 0 1px 0 rgba(255, 255, 255, 0.22);
+      backdrop-filter: blur(10px);
+      transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+    }
+
+    .dream-card.locked {
+      transform: translateY(-4px) scale(1.03);
+      border-color: #fde047;
+      background: linear-gradient(155deg, rgba(88, 42, 156, 0.95), rgba(45, 20, 94, 0.96));
+      box-shadow:
+        0 0 24px rgba(253, 224, 71, 0.65),
+        0 0 38px rgba(103, 232, 249, 0.35),
+        inset 0 0 14px rgba(253, 224, 71, 0.25);
+    }
+
+    .dream-card.correct-flash {
+      border-color: #4ade80 !important;
+      background: linear-gradient(155deg, rgba(22, 101, 52, 0.95), rgba(6, 78, 59, 0.96)) !important;
+      box-shadow: 0 0 30px rgba(74, 222, 128, 0.85) !important;
+    }
+
+    .dream-card.wrong-flash {
+      border-color: #fb7185 !important;
+      background: linear-gradient(155deg, rgba(136, 19, 55, 0.95), rgba(76, 5, 25, 0.96)) !important;
+      box-shadow: 0 0 28px rgba(251, 113, 133, 0.8) !important;
+    }
+
+    /* Reticle Crosshair */
+    #reticle {
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: 54px;
+      height: 54px;
+      margin-left: -27px;
+      margin-top: -27px;
+      border-radius: 9999px;
+      border: 3px solid #fde047;
+      box-shadow: 0 0 16px rgba(253, 224, 71, 0.75);
+      pointer-events: none;
+      z-index: 40;
+      display: none;
+      transition: width 0.14s ease, height 0.14s ease, margin 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+    }
+
+    #reticle.locked {
+      width: 72px;
+      height: 72px;
+      margin-left: -36px;
+      margin-top: -36px;
+      border-color: #67e8f9;
+      box-shadow: 0 0 24px #67e8f9, 0 0 40px rgba(253, 224, 71, 0.7);
+    }
+
+    /* Starburst Flash & Screen Shake */
+    #starburst-flash {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(circle, rgba(254, 249, 195, 0.72) 0%, rgba(167, 139, 250, 0.25) 55%, transparent 80%);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 45;
+      transition: opacity 0.2s ease-out;
+    }
+
+    @keyframes screenShake {
+      0%, 100% { transform: translate(0, 0) rotate(0deg); }
+      20% { transform: translate(-7px, 4px) rotate(-0.6deg); }
+      40% { transform: translate(7px, -4px) rotate(0.6deg); }
+      60% { transform: translate(-5px, -3px) rotate(-0.4deg); }
+      80% { transform: translate(5px, 3px) rotate(0.4deg); }
+    }
+
+    .shake-active {
+      animation: screenShake 0.36s ease-in-out;
+    }
+
+    /* Floating Feedback Text */
+    .floating-badge {
+      position: fixed;
+      left: 50%;
+      top: 42%;
+      transform: translate(-50%, -50%);
+      z-index: 50;
+      pointer-events: none;
+      font-family: 'Fredoka', sans-serif;
+      text-shadow: 0 4px 16px rgba(0, 0, 0, 0.7);
+      animation: floatUpFade 1.1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes floatUpFade {
+      0% { opacity: 0; transform: translate(-50%, -25%) scale(0.82); }
+      20% { opacity: 1; transform: translate(-50%, -50%) scale(1.06); }
+      80% { opacity: 1; transform: translate(-50%, -78%) scale(1); }
+      100% { opacity: 0; transform: translate(-50%, -95%) scale(0.95); }
+    }
+
+    #particle-canvas {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 35;
+    }
+  </style>
+</head>
+<body>
+  <!-- Dream / Night Sky Backdrop -->
+  <div id="dream-backdrop"></div>
+
+  <!-- Mirrored AR Camera Feed -->
+  <video id="ar-video" playsinline muted></video>
+
+  <!-- Particle Effects Canvas -->
+  <canvas id="particle-canvas"></canvas>
+
+  <!-- Starburst Flash -->
+  <div id="starburst-flash"></div>
+
+  <!-- Reticle Cursor -->
+  <div id="reticle" aria-hidden="true">
+    <div class="w-full h-full flex items-center justify-center text-amber-200 text-lg">✦</div>
+  </div>
+
+  <!-- GAMEPLAY LAYER -->
+  <div id="game-ui" class="relative z-20 w-screen h-screen flex flex-col justify-between p-2.5 sm:p-4 pointer-events-none hidden">
+    <!-- TOP HUD & COMPACT QUESTION BOARD -->
+    <div class="flex flex-col gap-2 max-w-5xl w-full mx-auto pointer-events-auto">
+      <div class="flex flex-wrap items-center justify-between gap-2 bg-indigo-950/80 border border-purple-300/30 rounded-2xl px-3 py-2 backdrop-blur-md shadow-lg">
+        <div class="flex items-center gap-2">
+          <span class="text-xl sm:text-2xl">🌙</span>
+          <div>
+            <div class="font-display text-xs sm:text-sm font-bold text-amber-300 leading-tight">PENJAGA TIDUR BERKUALITI</div>
+            <div id="round-label" class="text-[11px] sm:text-xs text-purple-200 font-semibold">Kuiz: Tidur Berkualiti (Set 2)</div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm font-bold">
+          <div id="q-counter" class="bg-purple-900/80 border border-purple-400/30 px-2.5 py-1 rounded-xl text-amber-200">
+            🌙 1 / 10
+          </div>
+          <div class="bg-indigo-900/80 border border-cyan-400/30 px-2.5 py-1 rounded-xl text-cyan-200">
+            ⚡ <span id="score-display">0</span>
+          </div>
+          <div id="combo-badge" class="bg-amber-500/20 border border-amber-300/50 px-2.5 py-1 rounded-xl text-amber-300">
+            COMBO x1
+          </div>
+          <button onclick="returnToMenu()" title="Ke Menu" class="bg-white/10 hover:bg-white/20 text-purple-100 px-2.5 py-1 rounded-xl transition cursor-pointer">
+            <i class="fa-solid fa-house"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Progress Bar -->
+      <div class="w-full h-2 bg-indigo-950/80 rounded-full overflow-hidden border border-purple-400/25">
+        <div id="progress-bar" class="h-full bg-gradient-to-r from-amber-300 via-yellow-400 to-cyan-300 transition-all duration-300" style="width: 10%;"></div>
+      </div>
+
+      <!-- Compact Question Card -->
+      <div class="bg-gradient-to-r from-indigo-950/90 via-purple-950/90 to-indigo-950/90 border-2 border-amber-300/45 rounded-2xl px-4 py-2.5 sm:py-3 shadow-xl backdrop-blur-md">
+        <div class="flex items-center justify-between gap-2 mb-1">
+          <span id="q-type-tag" class="text-[10px] sm:text-xs uppercase tracking-wider font-extrabold px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-200 border border-amber-300/30">
+            Soalan Situasi & Kefahaman
+          </span>
+          <span class="text-xs text-purple-200">☾ Set 2</span>
+        </div>
+        <h2 id="question-text" class="font-display text-base sm:text-xl font-bold text-white leading-snug">
+          Memuatkan soalan...
+        </h2>
+      </div>
+    </div>
+
+    <!-- OPEN MIDDLE AR ZONE -->
+    <div class="flex-1 min-h-0 flex items-center justify-center pointer-events-none">
+      <div id="lock-banner" class="hidden bg-cyan-400/20 border border-cyan-300 text-cyan-100 font-display font-bold text-xs sm:text-sm px-4 py-1.5 rounded-full backdrop-blur-sm shadow-lg">
+        🎯 SASARAN DIKUNCI!
+      </div>
+    </div>
+
+    <!-- BOTTOM TARGET CARDS & STATUS FOOTER -->
+    <div class="flex flex-col gap-2 max-w-6xl w-full mx-auto pointer-events-auto">
+      <div id="targets-grid" class="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3"></div>
+
+      <div class="flex flex-wrap items-center justify-between gap-2 bg-indigo-950/85 border border-purple-300/25 rounded-2xl px-3 py-2 backdrop-blur-md text-xs">
+        <div class="flex items-center gap-2 text-purple-100 font-semibold">
+          <span id="tracking-dot" class="inline-block w-2.5 h-2.5 rounded-full bg-amber-300 animate-pulse"></span>
+          <span id="tracking-status">Menunggu isyarat tangan / tetikus...</span>
+        </div>
+
+        <div class="hidden md:flex items-center gap-3 text-purple-200/90">
+          <span>☝️ Telunjuk: Gerak</span>
+          <span>•</span>
+          <span>👌 Cubit / 👍 Ibu Jari Turun: Pancar</span>
+        </div>
+
+        <button id="quick-fire-btn" onclick="triggerFire(true)" class="bg-gradient-to-r from-amber-400 to-yellow-300 hover:from-amber-300 hover:to-yellow-200 text-indigo-950 font-display font-bold px-3.5 py-1.5 rounded-xl shadow-md transition cursor-pointer">
+          ✨ PANCAR SEKARANG
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- WELCOME MODAL -->
+  <div id="welcome-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-indigo-950/75 backdrop-blur-md overflow-y-auto">
+    <div class="max-w-2xl w-full bg-gradient-to-b from-[#291259] to-[#14082e] border-2 border-amber-300/45 rounded-3xl p-5 sm:p-7 shadow-2xl">
+      <div class="text-center mb-4">
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/15 border border-amber-300/35 text-amber-200 text-xs font-bold mb-2">
+          <span>✨ AR SLEEP GUARDIAN</span>
+          <span>•</span>
+          <span>Kuiz Set 2: Situasi & Kefahaman</span>
+        </div>
+        <h1 class="font-display text-2xl sm:text-4xl font-bold text-amber-300 drop-shadow">
+          🌙 PENJAGA TIDUR BERKUALITI
+        </h1>
+        <p class="text-purple-100 text-xs sm:text-sm font-semibold mt-1">
+          Pilih satu jawapan yang paling tepat bagi setiap soalan situasi & kefahaman tidur berkualiti!
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+        <div class="bg-white/5 border border-purple-300/25 rounded-2xl p-3 text-center">
+          <div class="text-2xl mb-1">☝️</div>
+          <div class="font-display font-bold text-amber-200 text-sm">1. Arahkan Telunjuk</div>
+          <p class="text-xs text-purple-200/90 mt-0.5">Gerakkan jari telunjuk atau tetikus ke kad pilihan jawapan.</p>
+        </div>
+        <div class="bg-white/5 border border-purple-300/25 rounded-2xl p-3 text-center">
+          <div class="text-2xl mb-1">🎯</div>
+          <div class="font-display font-bold text-cyan-200 text-sm">2. Kunci Sasaran</div>
+          <p class="text-xs text-purple-200/90 mt-0.5">Halakan ke atas kad jawapan di bawah sehingga terkunci.</p>
+        </div>
+        <div class="bg-white/5 border border-purple-300/25 rounded-2xl p-3 text-center">
+          <div class="text-2xl mb-1">👌</div>
+          <div class="font-display font-bold text-amber-300 text-sm">3. Cubit untuk Pancar</div>
+          <p class="text-xs text-purple-200/90 mt-0.5">Cantumkan ibu jari & telunjuk (atau klik/sentuh kad) untuk memancar!</p>
+        </div>
+      </div>
+
+      <div id="camera-error-box" class="hidden mb-4 bg-rose-950/80 border border-rose-400/60 text-rose-100 rounded-2xl p-3.5 text-xs sm:text-sm">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <div class="font-bold text-rose-200 mb-0.5"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Akses Kamera Ditolak / Tidak Tersedia</div>
+            <p id="camera-error-detail" class="text-rose-100/90">Sila benarkan kebenaran kamera pada pelayar atau main menggunakan mod Tetikus / Sentuhan Skrin.</p>
+          </div>
+          <button onclick="startWithCamera()" class="shrink-0 bg-rose-500 hover:bg-rose-400 text-white font-bold px-3 py-1.5 rounded-xl text-xs cursor-pointer">
+            Cuba Lagi
+          </button>
+        </div>
+      </div>
+
+      <div class="flex flex-col sm:flex-row gap-3">
+        <button onclick="startWithCamera()" class="flex-1 bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-300 hover:brightness-105 text-indigo-950 font-display font-bold text-sm sm:text-base py-3.5 px-4 rounded-2xl shadow-lg transition cursor-pointer flex items-center justify-center gap-2">
+          <span>📹</span>
+          <span>BUKA KAMERA & MULA</span>
+        </button>
+        <button onclick="startWithoutCamera()" class="flex-1 bg-indigo-900/90 hover:bg-indigo-800 border border-cyan-300/45 text-cyan-100 font-display font-bold text-sm sm:text-base py-3.5 px-4 rounded-2xl shadow-lg transition cursor-pointer flex items-center justify-center gap-2">
+          <span>🖱️</span>
+          <span>Main dengan Tetikus / Sentuhan Skrin</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- VICTORY MODAL -->
+  <div id="victory-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-indigo-950/80 backdrop-blur-md">
+    <div class="max-w-lg w-full bg-gradient-to-b from-[#2b135e] to-[#120729] border-2 border-amber-300/60 rounded-3xl p-6 text-center shadow-2xl">
+      <div class="text-xs font-extrabold uppercase tracking-wider text-cyan-200 mb-1">Kuiz Set 2 Selesai • 10 / 10 Soalan</div>
+      <h2 class="font-display text-2xl sm:text-3xl font-bold text-amber-300">🌟 TAHNIAH, PENJAGA TIDUR!</h2>
+      <p id="star-rank-text" class="text-purple-100 text-sm font-semibold mt-1">Pakar Tidur Berkualiti!</p>
+
+      <div id="stars-display" class="text-4xl my-4 tracking-widest">⭐⭐⭐</div>
+
+      <div class="grid grid-cols-2 gap-3 text-left mb-5">
+        <div class="bg-white/5 border border-purple-300/25 rounded-2xl p-3">
+          <div class="text-xs text-purple-200">⚡ Jumlah Tenaga Rehat</div>
+          <div id="stat-score" class="font-display text-xl font-bold text-amber-300">0</div>
+        </div>
+        <div class="bg-white/5 border border-purple-300/25 rounded-2xl p-3">
+          <div class="text-xs text-purple-200">🔥 Combo Tertinggi</div>
+          <div id="stat-combo" class="font-display text-xl font-bold text-cyan-300">x1</div>
+        </div>
+        <div class="bg-white/5 border border-purple-300/25 rounded-2xl p-3">
+          <div class="text-xs text-purple-200">✅ Jawapan Betul</div>
+          <div id="stat-correct" class="font-display text-xl font-bold text-emerald-300">0 / 10</div>
+        </div>
+        <div class="bg-white/5 border border-purple-300/25 rounded-2xl p-3">
+          <div class="text-xs text-purple-200">🎯 Kadar Ketepatan</div>
+          <div id="stat-accuracy" class="font-display text-xl font-bold text-purple-200">0%</div>
+        </div>
+      </div>
+
+      <div class="flex flex-col sm:flex-row gap-3">
+        <button onclick="restartGame()" class="flex-1 bg-gradient-to-r from-amber-400 to-yellow-300 hover:brightness-105 text-indigo-950 font-display font-bold py-3 px-4 rounded-2xl shadow-lg transition cursor-pointer">
+          🔄 MAIN SEMULA
+        </button>
+        <button onclick="returnToMenu()" class="flex-1 bg-white/10 hover:bg-white/20 border border-purple-300/30 text-white font-display font-bold py-3 px-4 rounded-2xl transition cursor-pointer">
+          🏠 KE MENU
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================================
+    // 1. KUIZ: TIDUR BERKUALITI (SET 2 - SOALAN SITUASI DAN KEFAHAMAN)
+    // =========================================================================
+    const SET_2_QUESTIONS = [
+      {
+        id: 'q1',
+        tag: 'Situasi & Amalan',
+        emoji: '⏰',
+        question: '1. Ali sering tidur lewat dan bangun pada waktu yang berbeza setiap hari. Apakah amalan yang patut dilakukan Ali?',
+        options: [
+          { key: 'A', text: 'Tidur lebih lewat', emoji: '🌙' },
+          { key: 'B', text: 'Mengamalkan jadual tidur yang konsisten', emoji: '⏰' },
+          { key: 'C', text: 'Menggunakan telefon sebelum tidur', emoji: '📱' },
+          { key: 'D', text: 'Minum kopi pada waktu malam', emoji: '☕' }
+        ],
+        correctKey: 'B'
+      },
+      {
+        id: 'q2',
+        tag: 'Kefahaman Pembelajaran',
+        emoji: '🧠',
+        question: '2. Mengapakah tidur penting untuk proses pembelajaran?',
+        options: [
+          { key: 'A', text: 'Membantu meningkatkan daya ingatan', emoji: '🧠' },
+          { key: 'B', text: 'Mengurangkan keinginan belajar', emoji: '📉' },
+          { key: 'C', text: 'Mengganggu fokus', emoji: '🌀' },
+          { key: 'D', text: 'Menyebabkan keletihan', emoji: '🥱' }
+        ],
+        correctKey: 'A'
+      },
+      {
+        id: 'q3',
+        tag: 'Gangguan Tidur',
+        emoji: '😴',
+        question: '3. Seseorang yang kerap mengantuk pada waktu siang dan mengalami serangan tidur mungkin mengalami gangguan...',
+        options: [
+          { key: 'A', text: 'Insomnia', emoji: '👀' },
+          { key: 'B', text: 'Sleep apnea', emoji: '😮‍💨' },
+          { key: 'C', text: 'Narcolepsy', emoji: '😴' },
+          { key: 'D', text: 'Restless Legs Syndrome', emoji: '🦵' }
+        ],
+        correctKey: 'C'
+      },
+      {
+        id: 'q4',
+        tag: 'Kesan Tidur Tidak Berkualiti',
+        emoji: '📚',
+        question: '4. Apakah kesan jika seseorang tidak mendapat tidur yang berkualiti?',
+        options: [
+          { key: 'A', text: 'Lebih mudah memberikan tumpuan', emoji: '🎯' },
+          { key: 'B', text: 'Prestasi pembelajaran boleh terjejas', emoji: '📉' },
+          { key: 'C', text: 'Daya ingatan semakin meningkat', emoji: '✨' },
+          { key: 'D', text: 'Emosi sentiasa stabil', emoji: '😊' }
+        ],
+        correctKey: 'B'
+      },
+      {
+        id: 'q5',
+        tag: 'Amalan Sebelum Tidur',
+        emoji: '📖',
+        question: '5. Antara berikut, manakah aktiviti yang sesuai dilakukan sebelum tidur?',
+        options: [
+          { key: 'A', text: 'Bermain permainan video', emoji: '🎮' },
+          { key: 'B', text: 'Menonton telefon dalam tempoh lama', emoji: '📵' },
+          { key: 'C', text: 'Melakukan aktiviti menenangkan', emoji: '📖' },
+          { key: 'D', text: 'Minum minuman berkafein', emoji: '☕' }
+        ],
+        correctKey: 'C'
+      },
+      {
+        id: 'q6',
+        tag: 'Gangguan Tidur',
+        emoji: '😮‍💨',
+        question: '6. Gangguan tidur yang menyebabkan pernafasan terhenti seketika secara berulang dikenali sebagai...',
+        options: [
+          { key: 'A', text: 'Insomnia', emoji: '👀' },
+          { key: 'B', text: 'Narcolepsy', emoji: '😴' },
+          { key: 'C', text: 'Sleep apnea', emoji: '😮‍💨' },
+          { key: 'D', text: 'Restless Legs Syndrome', emoji: '🦵' }
+        ],
+        correctKey: 'C'
+      },
+      {
+        id: 'q7',
+        tag: 'Faktor Persekitaran',
+        emoji: '🔊',
+        question: '7. Apakah faktor persekitaran yang boleh menyumbang kepada masalah tidur?',
+        options: [
+          { key: 'A', text: 'Bilik yang tenang', emoji: '🌌' },
+          { key: 'B', text: 'Bilik yang selesa', emoji: '🛏️' },
+          { key: 'C', text: 'Persekitaran yang bising', emoji: '🔊' },
+          { key: 'D', text: 'Jadual tidur konsisten', emoji: '⏰' }
+        ],
+        correctKey: 'C'
+      },
+      {
+        id: 'q8',
+        tag: 'Pemulihan Badan',
+        emoji: '💪',
+        question: '8. Tidur membantu pemulihan badan melalui proses...',
+        options: [
+          { key: 'A', text: 'Pembaikan tisu badan', emoji: '💪' },
+          { key: 'B', text: 'Pengurangan sistem imun', emoji: '🛡️' },
+          { key: 'C', text: 'Gangguan hormon', emoji: '⚖️' },
+          { key: 'D', text: 'Pengurangan pertumbuhan', emoji: '📏' }
+        ],
+        correctKey: 'A'
+      },
+      {
+        id: 'q9',
+        tag: 'Langkah Mengatasi',
+        emoji: '🩺',
+        question: '9. Apakah tindakan yang sesuai jika masalah tidur berterusan?',
+        options: [
+          { key: 'A', text: 'Mengabaikannya', emoji: '🙈' },
+          { key: 'B', text: 'Menambah penggunaan telefon', emoji: '📱' },
+          { key: 'C', text: 'Mendapatkan pemeriksaan kesihatan', emoji: '🩺' },
+          { key: 'D', text: 'Mengurangkan waktu rehat', emoji: '⏳' }
+        ],
+        correctKey: 'C'
+      },
+      {
+        id: 'q10',
+        tag: 'Gaya Hidup Sihat',
+        emoji: '🌟',
+        question: '10. Mengapakah tidur berkualiti dianggap asas gaya hidup sihat?',
+        options: [
+          { key: 'A', text: 'Membantu kesihatan fizikal dan mental', emoji: '🌟' },
+          { key: 'B', text: 'Menggantikan aktiviti fizikal', emoji: '🏃' },
+          { key: 'C', text: 'Mengelakkan semua penyakit', emoji: '💊' },
+          { key: 'D', text: 'Mengurangkan keperluan makanan', emoji: '🍽️' }
+        ],
+        correctKey: 'A'
+      }
+    ];
+
+    // =========================================================================
+    // 2. PROCEDURAL WEB AUDIO API SOUND ENGINE
+    // =========================================================================
+    const SoundFX = {
+      ctx: null,
+      ensureCtx() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioCtx();
+        }
+        if (this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+        return this.ctx;
+      },
+      playLockDing() {
+        const ctx = this.ensureCtx();
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, now);
+        osc.frequency.exponentialRampToValueAtTime(1174.66, now + 0.08);
+        gain.gain.setValueAtTime(0.08, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.15);
+      },
+      playBeamShot() {
+        const ctx = this.ensureCtx();
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(640, now);
+        osc.frequency.exponentialRampToValueAtTime(1560, now + 0.16);
+        gain.gain.setValueAtTime(0.14, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.19);
+      },
+      playCorrectChime() {
+        const ctx = this.ensureCtx();
+        const notes = [523.25, 659.25, 783.99, 1046.5];
+        notes.forEach((freq, idx) => {
+          const now = ctx.currentTime + idx * 0.075;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now);
+          gain.gain.setValueAtTime(0.13, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.46);
+        });
+      },
+      playWrongThud() {
+        const ctx = this.ensureCtx();
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(165, now);
+        osc.frequency.exponentialRampToValueAtTime(68, now + 0.28);
+        gain.gain.setValueAtTime(0.14, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.31);
+      },
+      playVictoryFanfare() {
+        const ctx = this.ensureCtx();
+        const melody = [
+          { f: 523.25, d: 0.16 },
+          { f: 659.25, d: 0.16 },
+          { f: 783.99, d: 0.16 },
+          { f: 1046.5, d: 0.34 },
+          { f: 783.99, d: 0.16 },
+          { f: 1046.5, d: 0.55 }
+        ];
+        let offset = 0;
+        melody.forEach((n) => {
+          const start = ctx.currentTime + offset;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(n.f, start);
+          gain.gain.setValueAtTime(0.15, start);
+          gain.gain.exponentialRampToValueAtTime(0.001, start + n.d);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(start);
+          osc.stop(start + n.d + 0.02);
+          offset += n.d * 0.92;
+        });
+      }
+    };
+
+    // =========================================================================
+    // 3. GAME STATE & QUESTION DECK
+    // =========================================================================
+    const state = {
+      questions: [],
+      currentIndex: 0,
+      score: 0,
+      combo: 1,
+      maxCombo: 1,
+      correctCount: 0,
+      inputLocked: false,
+      pointerX: window.innerWidth / 2,
+      pointerY: window.innerHeight / 2,
+      lockedTargetEl: null,
+      lastLockedKey: null,
+      lastFireTime: 0,
+      cameraActive: false,
+      mpCamera: null,
+      mpHands: null,
+      particles: []
+    };
+
+    function shuffleArray(arr) {
+      const copy = [...arr];
+      for (let i = copy.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+      }
+      return copy;
+    }
+
+    function generateSet2Deck() {
+      return shuffleArray(SET_2_QUESTIONS).map((q) => ({
+        ...q,
+        shuffledOptions: shuffleArray(q.options)
+      }));
+    }
+
+    // =========================================================================
+    // 4. RENDER QUESTION & TARGET CARDS
+    // =========================================================================
+    function renderCurrentQuestion() {
+      if (state.currentIndex >= state.questions.length) {
+        showVictoryModal();
+        return;
+      }
+
+      state.inputLocked = false;
+      state.lockedTargetEl = null;
+      state.lastLockedKey = null;
+      document.getElementById('lock-banner').classList.add('hidden');
+      document.getElementById('reticle').classList.remove('locked');
+
+      const q = state.questions[state.currentIndex];
+      const total = state.questions.length;
+
+      document.getElementById('q-counter').textContent = `🌙 ${state.currentIndex + 1} / ${total}`;
+      document.getElementById('progress-bar').style.width = `${((state.currentIndex + 1) / total) * 100}%`;
+      document.getElementById('q-type-tag').textContent = q.tag;
+      document.getElementById('question-text').textContent = q.question;
+
+      const grid = document.getElementById('targets-grid');
+      grid.innerHTML = '';
+
+      q.shuffledOptions.forEach((opt) => {
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.dataset.key = opt.key;
+        card.className = 'dream-card max-h-32 sm:max-h-40 w-full rounded-2xl p-2.5 sm:p-3.5 text-left flex flex-col justify-between cursor-pointer overflow-hidden';
+        card.innerHTML = `
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-xl sm:text-2xl">${opt.emoji}</span>
+            <span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-300/20 text-amber-200 border border-amber-300/30">PILIHAN ${opt.key}</span>
+          </div>
+          <div class="font-display text-xs sm:text-sm md:text-base font-bold text-white leading-snug line-clamp-2">${opt.text}</div>
+        `;
+
+        card.addEventListener('click', () => {
+          if (state.inputLocked) return;
+          state.lockedTargetEl = card;
+          triggerFire(true);
+        });
+
+        grid.appendChild(card);
+      });
+
+      updateHUD();
+      checkLockCollision(state.pointerX, state.pointerY);
+    }
+
+    function updateHUD() {
+      document.getElementById('score-display').textContent = state.score;
+      document.getElementById('combo-badge').textContent = `COMBO x${state.combo}`;
+    }
+
+    // =========================================================================
+    // 5. RETICLE, LOCK-ON COLLISION & SAFE FIRING SYSTEM
+    // =========================================================================
+    function updateReticlePosition(x, y) {
+      state.pointerX = Math.max(0, Math.min(window.innerWidth, x));
+      state.pointerY = Math.max(0, Math.min(window.innerHeight, y));
+
+      const reticle = document.getElementById('reticle');
+      reticle.style.display = 'block';
+      reticle.style.transform = `translate3d(${state.pointerX}px, ${state.pointerY}px, 0)`;
+
+      checkLockCollision(state.pointerX, state.pointerY);
+    }
+
+    function checkLockCollision(x, y) {
+      if (state.inputLocked) return;
+
+      const cards = Array.from(document.querySelectorAll('#targets-grid .dream-card'));
+      let hitCard = null;
+
+      for (const card of cards) {
+        const rect = card.getBoundingClientRect();
+        if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+          hitCard = card;
+          break;
+        }
+      }
+
+      cards.forEach((c) => c.classList.toggle('locked', c === hitCard));
+
+      const reticle = document.getElementById('reticle');
+      const banner = document.getElementById('lock-banner');
+
+      if (hitCard) {
+        state.lockedTargetEl = hitCard;
+        reticle.classList.add('locked');
+        banner.classList.remove('hidden');
+        document.getElementById('tracking-status').textContent = `🎯 SASARAN DIKUNCI: Pilihan ${hitCard.dataset.key}`;
+        if (state.lastLockedKey !== hitCard.dataset.key) {
+          state.lastLockedKey = hitCard.dataset.key;
+          SoundFX.playLockDing();
+        }
+      } else {
+        state.lockedTargetEl = null;
+        state.lastLockedKey = null;
+        reticle.classList.remove('locked');
+        banner.classList.add('hidden');
+        document.getElementById('tracking-status').textContent = state.cameraActive
+          ? '☝️ Arahkan jari telunjuk ke kad jawapan di bawah'
+          : '🖱️ Gerakkan tetikus atau sentuh kad jawapan';
+      }
+    }
+
+    function triggerFire(bypassCooldown = false) {
+      if (state.inputLocked) return;
+
+      if (!state.lockedTargetEl) {
+        spawnFloatingText('Halakan ke kad jawapan dahulu!', '#fde047');
+        return;
+      }
+
+      const now = Date.now();
+      if (!bypassCooldown && now - state.lastFireTime < 800) {
+        return;
+      }
+      state.lastFireTime = now;
+      state.inputLocked = true;
+
+      const targetCard = state.lockedTargetEl;
+      const rect = targetCard.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+
+      SoundFX.playBeamShot();
+      const flash = document.getElementById('starburst-flash');
+      flash.style.opacity = '1';
+      setTimeout(() => { flash.style.opacity = '0'; }, 180);
+
+      const q = state.questions[state.currentIndex];
+      const isCorrect = targetCard.dataset.key === q.correctKey;
+
+      if (isCorrect) {
+        const gained = 100 + state.combo * 50;
+        state.score += gained;
+        state.correctCount += 1;
+        state.combo += 1;
+        if (state.combo > state.maxCombo) state.maxCombo = state.combo;
+
+        targetCard.classList.add('correct-flash');
+        SoundFX.playCorrectChime();
+        spawnParticles(cx, cy, ['#fde047', '#c084fc', '#67e8f9', '#4ade80'], 34);
+        spawnFloatingText(`+${gained} TENAGA REHAT! • COMBO x${state.combo}`, '#4ade80');
+      } else {
+        state.combo = 1;
+        targetCard.classList.add('wrong-flash');
+        SoundFX.playWrongThud();
+        document.body.classList.add('shake-active');
+        setTimeout(() => document.body.classList.remove('shake-active'), 380);
+        spawnParticles(cx, cy, ['#fb7185', '#fb923c', '#f472b6'], 26);
+        spawnFloatingText(`❌ CUBA LAGI! (Jawapan: ${q.correctKey})`, '#fb7185');
+      }
+
+      updateHUD();
+
+      setTimeout(() => {
+        state.currentIndex += 1;
+        renderCurrentQuestion();
+      }, 1150);
+    }
+
+    // =========================================================================
+    // 6. PARTICLE CANVAS & FLOATING TEXT
+    // =========================================================================
+    const pCanvas = document.getElementById('particle-canvas');
+    const pCtx = pCanvas.getContext('2d');
+
+    function resizeCanvas() {
+      pCanvas.width = window.innerWidth;
+      pCanvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function spawnParticles(x, y, colors, count) {
+      for (let i = 0; i < count; i++) {
+        const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.4;
+        const speed = 2.5 + Math.random() * 6;
+        state.particles.push({
+          x,
+          y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed - 1.5,
+          size: 4 + Math.random() * 5,
+          color: colors[i % colors.length],
+          alpha: 1,
+          decay: 0.022 + Math.random() * 0.015
+        });
+      }
+    }
+
+    function animateParticles() {
+      pCtx.clearRect(0, 0, pCanvas.width, pCanvas.height);
+      for (let i = state.particles.length - 1; i >= 0; i--) {
+        const p = state.particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.12;
+        p.alpha -= p.decay;
+        if (p.alpha <= 0) {
+          state.particles.splice(i, 1);
+          continue;
+        }
+        pCtx.save();
+        pCtx.globalAlpha = Math.max(0, p.alpha);
+        pCtx.fillStyle = p.color;
+        pCtx.beginPath();
+        pCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        pCtx.fill();
+        pCtx.restore();
+      }
+      requestAnimationFrame(animateParticles);
+    }
+    animateParticles();
+
+    function spawnFloatingText(text, color) {
+      const el = document.createElement('div');
+      el.className = 'floating-badge text-lg sm:text-2xl font-bold px-4 py-1.5 rounded-2xl bg-indigo-950/85 border border-white/20 text-center';
+      el.style.color = color;
+      el.textContent = text;
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 1150);
+    }
+
+    // =========================================================================
+    // 7. MEDIAPIPE HANDS & MOUSE/TOUCH FALLBACK
+    // =========================================================================
+    window.addEventListener('mousemove', (e) => {
+      if (!state.cameraActive && !document.getElementById('game-ui').classList.contains('hidden')) {
+        updateReticlePosition(e.clientX, e.clientY);
+      }
+    });
+
+    async function initMediaPipeCamera() {
+      const videoEl = document.getElementById('ar-video');
+      const errorBox = document.getElementById('camera-error-box');
+      const errorDetail = document.getElementById('camera-error-detail');
+      errorBox.classList.add('hidden');
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        errorDetail.textContent = 'Peranti atau pelayar ini tidak menyokong akses kamera.';
+        errorBox.classList.remove('hidden');
+        return false;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+          audio: false
+        });
+        videoEl.srcObject = stream;
+        videoEl.style.display = 'block';
+        await videoEl.play();
+
+        if (!state.mpHands) {
+          state.mpHands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+          });
+          state.mpHands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.55,
+            minTrackingConfidence: 0.55
+          });
+
+          state.mpHands.onResults((results) => {
+            if (!state.cameraActive) return;
+            const landmarks = results.multiHandLandmarks && results.multiHandLandmarks[0];
+            if (!landmarks) {
+              document.getElementById('tracking-dot').className = 'inline-block w-2.5 h-2.5 rounded-full bg-amber-300';
+              return;
+            }
+
+            document.getElementById('tracking-dot').className = 'inline-block w-2.5 h-2.5 rounded-full bg-emerald-400';
+
+            const indexTip = landmarks[8];
+            const thumbTip = landmarks[4];
+            const indexPip = landmarks[6];
+
+            const px = (1 - indexTip.x) * window.innerWidth;
+            const py = indexTip.y * window.innerHeight;
+            updateReticlePosition(px, py);
+
+            const pinchDist = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
+            const thumbDown = thumbTip.y > indexPip.y + 0.04;
+
+            if (pinchDist < 0.055 || thumbDown) {
+              triggerFire(false);
+            }
+          });
+        }
+
+        if (!state.mpCamera) {
+          state.mpCamera = new Camera(videoEl, {
+            onFrame: async () => {
+              if (state.cameraActive && state.mpHands) {
+                await state.mpHands.send({ image: videoEl });
+              }
+            },
+            width: 1280,
+            height: 720
+          });
+        }
+        await state.mpCamera.start();
+        state.cameraActive = true;
+        return true;
+      } catch (err) {
+        videoEl.style.display = 'none';
+        state.cameraActive = false;
+        errorDetail.textContent = 'Kebenaran kamera ditolak atau gagal dimuatkan. Anda boleh mencuba lagi atau memilih mod Tetikus / Sentuhan Skrin.';
+        errorBox.classList.remove('hidden');
+        return false;
+      }
+    }
+
+    function stopCameraStream() {
+      state.cameraActive = false;
+      const videoEl = document.getElementById('ar-video');
+      if (videoEl.srcObject) {
+        videoEl.srcObject.getTracks().forEach((t) => t.stop());
+        videoEl.srcObject = null;
+      }
+      videoEl.style.display = 'none';
+    }
+
+    // =========================================================================
+    // 8. GAME FLOW, VICTORY & DECORATIVE STARS
+    // =========================================================================
+    function resetAndStartGame(useCamera) {
+      SoundFX.ensureCtx();
+      state.questions = generateSet2Deck();
+      state.currentIndex = 0;
+      state.score = 0;
+      state.combo = 1;
+      state.maxCombo = 1;
+      state.correctCount = 0;
+      state.inputLocked = false;
+
+      document.getElementById('welcome-modal').classList.add('hidden');
+      document.getElementById('victory-modal').classList.remove('flex');
+      document.getElementById('victory-modal').classList.add('hidden');
+      document.getElementById('game-ui').classList.remove('hidden');
+
+      renderCurrentQuestion();
+      if (!useCamera) {
+        updateReticlePosition(window.innerWidth / 2, window.innerHeight * 0.75);
+      }
+    }
+
+    async function startWithCamera() {
+      const ok = await initMediaPipeCamera();
+      if (ok) {
+        resetAndStartGame(true);
+      }
+    }
+
+    function startWithoutCamera() {
+      stopCameraStream();
+      resetAndStartGame(false);
+    }
+
+    function restartGame() {
+      resetAndStartGame(state.cameraActive);
+    }
+
+    function returnToMenu() {
+      stopCameraStream();
+      document.getElementById('reticle').style.display = 'none';
+      document.getElementById('game-ui').classList.add('hidden');
+      document.getElementById('victory-modal').classList.remove('flex');
+      document.getElementById('victory-modal').classList.add('hidden');
+      document.getElementById('welcome-modal').classList.remove('hidden');
+    }
+
+    function showVictoryModal() {
+      document.getElementById('game-ui').classList.add('hidden');
+      document.getElementById('reticle').style.display = 'none';
+
+      const modal = document.getElementById('victory-modal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+
+      const total = state.questions.length;
+      const acc = Math.round((state.correctCount / total) * 100);
+
+      let stars = '⭐';
+      let rankText = 'Teruskan Amalan Tidur Sihat!';
+      if (state.correctCount >= 9) {
+        stars = '⭐⭐⭐';
+        rankText = 'Pakar Tidur Berkualiti!';
+      } else if (state.correctCount >= 6) {
+        stars = '⭐⭐';
+        rankText = 'Penjaga Rehat Hebat!';
+      }
+
+      document.getElementById('stars-display').textContent = stars;
+      document.getElementById('star-rank-text').textContent = rankText;
+      document.getElementById('stat-score').textContent = state.score;
+      document.getElementById('stat-combo').textContent = `x${state.maxCombo}`;
+      document.getElementById('stat-correct').textContent = `${state.correctCount} / ${total}`;
+      document.getElementById('stat-accuracy').textContent = `${acc}%`;
+
+      SoundFX.playVictoryFanfare();
+      if (typeof confetti === 'function') {
+        confetti({
+          particleCount: 110,
+          spread: 75,
+          origin: { y: 0.6 }
+        });
+      }
+    }
+
+    (function seedStars() {
+      const backdrop = document.getElementById('dream-backdrop');
+      for (let i = 0; i < 36; i++) {
+        const s = document.createElement('div');
+        s.className = 'twinkle-star';
+        const size = 2 + Math.random() * 3.5;
+        s.style.width = `${size}px`;
+        s.style.height = `${size}px`;
+        s.style.left = `${Math.random() * 100}%`;
+        s.style.top = `${Math.random() * 100}%`;
+        s.style.setProperty('--dur', `${2.2 + Math.random() * 3.5}s`);
+        backdrop.appendChild(s);
+      }
+    })();
+  </script>
+</body>
+</html>
